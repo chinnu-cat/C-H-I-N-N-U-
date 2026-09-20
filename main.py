@@ -1,5 +1,5 @@
 import asyncio
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 API_ID = 30663433
@@ -21,9 +21,13 @@ async def start_cmd(client, message):
         reply_markup=buttons
     )
 
+async def main():
+    await app.start()
+    print("Bot Live Ayyindhi!")
+    await idle()
+    await app.stop()
+
 if __name__ == "__main__":
-    try:
-        asyncio.get_event_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
-    app.run()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
