@@ -1,4 +1,4 @@
-import os
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -21,4 +21,9 @@ async def start_cmd(client, message):
         reply_markup=buttons
     )
 
-app.run()
+if __name__ == "__main__":
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+    app.run()
