@@ -1,39 +1,29 @@
+import os
 import asyncio
-from flask import Flask
-from threading import Thread
-from pyrogram import Client, filters, idle
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Dummy Web Server for Render Web Service Keep-Alive
-web_app = Flask('')
-
-@web_app.route('/')
-def home():
-    return "Bot is Alive!"
-
-def run_web():
-    web_app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run_web)
-    t.start()
-
-# Bot Configuration
-API_ID = 30663433
-API_HASH = "65cc6e1125b0b08ce45cd8e54d1fcda0"
 BOT_TOKEN = "8809605820:AAFs8BJ-tBYVGF6vv97Q4ZuNMC1Tef0xs4E"
 FORCE_JOIN_LINK = "https://t.me/Madara_217"
 
-app = Client("chinnubot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[InlineKeyboardButton("🔥 Join Main Group 🔥", url=FORCE_JOIN_LINK)]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        f"Hello {update.effective_user.first_name}!\n\n"
+        f"Welcome to Chinnu Anime Bot.\n"
+        f"Anime files mariyu access pondadaaniki, main group lo join avvandi!",
+        reply_markup=reply_markup
+    )
 
-@app.on_message(filters.command("start") & filters.private)
-async def start_cmd(client, message):
-    buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔥 Join Main Group 🔥", url=FORCE_JOIN_LINK)]
-    ])
-    await message.reply_text(
-        f"Hello {message.from_user.first_name}!\n\nWelcome to Chinnu Anime Bot.\n"
-        f"Anime files mariyu search access pondadaaniki, mundhu ga mana main group lo join avvandi!",
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    print("Bot is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
         reply_markup=buttons
     )
 
