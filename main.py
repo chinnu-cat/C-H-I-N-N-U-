@@ -25,15 +25,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         f"Hello {update.effective_user.first_name}!\n\n"
-        f"Welcome to Chinnu Anime Bot.\n"
+        f"Welcome to 𝐇𝐎𝐔𝐒𝐄 𝐎𝐅 𝐀𝐍𝐈𝐌𝐄 🫵🏻🌍\n\n"
         f"Anime files mariyu access pondadaaniki, main group lo join avvandi!",
         reply_markup=reply_markup
     )
 
 def main():
-    # Background thread lo HTTP Web Server start avuthundhi (Render check pass kaadaniki)
+    # Background thread lo HTTP Web Server start avuthundhi
     threading.Thread(target=run_web_server, daemon=True).start()
     
+    # Telegram Bot Polling
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    print("Bot is starting...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
     # Telegram Bot Polling
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
