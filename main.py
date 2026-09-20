@@ -19,7 +19,7 @@ def run_web_server():
 # --- Telegram Bot Handler ---
 BOT_TOKEN = "8809605820:AAFs8BJ-tBYVGF6vv97Q4ZuNMC1Tef0xs4E"
 
-# Mee exact private channel link
+# Meeru ichina update chesina link
 FORCE_JOIN_LINK = "https://t.me/+rD-GZZYmAvZkNzdl"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,22 +36,6 @@ def main():
     # Background thread lo HTTP Web Server start avuthundhi
     threading.Thread(target=run_web_server, daemon=True).start()
     
-    # Telegram Bot Polling
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    print("Bot is starting...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
-    # Telegram Bot Polling
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    print("Bot is starting...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
     # Telegram Bot Polling
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
