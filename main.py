@@ -17,23 +17,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def main():
+    # Render Port Binding Fix
+    port = int(os.environ.get("PORT", 8080))
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    print("Bot is running...")
+    
+    print(f"Bot running on port {port}...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-        reply_markup=buttons
-    )
-
-async def main():
-    keep_alive()  # Start Dummy Web Server
-    await app.start()
-    print("Bot Live Ayyindhi!")
-    await idle()
-    await app.stop()
-
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
