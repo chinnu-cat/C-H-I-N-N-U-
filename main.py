@@ -12,29 +12,440 @@ from telegram.ext import (
     filters,
 )
 
-
-# =========================================================
+# =====================================================
 # SETTINGS
-# =========================================================
+# =====================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
-STORAGE_CHAT_ID = int(os.environ.get("STORAGE_CHAT_ID", "0"))
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+STORAGE_CHAT_ID = int(os.getenv("STORAGE_CHAT_ID", "0"))
 
-MAIN_CHANNEL = "@House_Of_Anime_Official"
-MAIN_CHANNEL_LINK = "https://t.me/House_Of_Anime_Official"
+CHANNEL = "@House_Of_Anime_Official"
+CHANNEL_LINK = "https://t.me/House_Of_Anime_Official"
 
 
-# =========================================================
-# STORAGE FILES
-# =========================================================
-# Format:
-# "search name": message_id
-#
+# =====================================================
+# FILE DATABASE
+# =====================================================
 # Example:
-# "example": 25
+# "example": 123
 #
-# Actual authorized storage message IDs later add cheyyali.
+# example = search name
+# 123 = private storage channel message ID
+#
+# Nee authorized files message IDs ikkada add cheyyali.
+# =====================================================
+
+FILES = {
+    "example": 123,
+}
+
+
+# =====================================================
+# RENDER HEALTH CHECK
+# =====================================================
+
+class Health(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+    def log_message(self, *args):
+        pass
+
+
+def health_server():
+    port = int(os.getenv("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), Health)
+    server.serve_forever()
+
+
+# =====================================================
+# DELETE FILE AFTER 1 HOUR
+# =====================================================
+
+async def delete_after_one_hour(context: ContextTypes.DEFAULT_TYPE):
+
+    data = context.job.data
+
+    try:
+        await context.bot.delete_message(
+            chat_id=data["chat_id"],
+            message_id=data["message_id"]
+        )
+        print("Deleted after 1 hour")
+
+    except Exception as e:
+        print("Delete error:", e)
+
+
+# =====================================================
+# START
+# =====================================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "🔥 Join Main Channel",
+                url=CHANNEL_LINK
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "✅ I Joined",
+                callback_data="joined"
+            )
+        ]
+    ]
+
+    await update.message.reply_text(
+        "🎬 HOUSE OF ANIME 🫵🏻🌍\n\n"
+        "🔥 First join our Main Channel.\n\n"
+        "After joining, press:\n"
+        "✅ I Joined\n\n"
+        "Then send the file name.",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+
+# =====================================================
+# CHECK JOIN
+# =====================================================
+
+async def check_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    try:
+
+        member = await context.bot.get_chat_member(
+            chat_id=CHANNEL,
+            user_id=user_id
+        )
+
+        if member.status in ["member", "administrator", "creator"]:
+
+            await query.message.reply_text(
+                "✅ Joined successfully!\n\n"
+                "📁 Ippudu meeku kavalsina "
+                "file name pampinchandi."
+            )
+
+        else:
+
+            await query.message.reply_text(
+                "❌ First Main Channel lo join avvandi.",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🔥 Join Channel",
+                            url=CHANNEL_LINK
+                        )
+                    ]
+                ])
+            )
+
+    except Exception as e:
+
+        print("Join check error:", e)
+
+        await query.message.reply_text(
+            "⚠️ Join check failed.\n"
+            "Please try again."
+        )
+
+
+# =====================================================
+# SEARCH
+# =====================================================
+
+async def search_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    text = update.message.text.strip().lower()
+
+    found_name = None
+    found_message_id = None
+
+    for name, message_id in FILES.items():
+
+        if text in name.lower():
+
+            found_name = name
+            found_message_id = message_id
+            break
+
+    # -------------------------------------------------
+    # NOT FOUND
+    # -------------------------------------------------
+
+    if found_name is None:
+
+        await update.message.reply_text(
+            "❌ FILE NOT FOUND\n\n"
+            f"🔎 Search: {update.message.text}\n\n"
+            "📩 Your request has been sent to Admin."
+        )
+
+        try:
+
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    "🔔 NEW FILE REQUEST\n\n"
+                    f"👤 User: {update.effective_user.first_name}\n"
+                    f"🆔 ID: {update.effective_user.id}\n"
+                    f"📁 Request: {update.message.text}"
+                )
+            )
+
+        except Exception as e:
+
+            print("Admin notification error:", e)
+
+        return
+
+    # -------------------------------------------------
+    # SEND REQUEST TO ADMIN
+    # -------------------------------------------------
+
+    request_id = (
+        f"{update.effective_user.id}|"
+        f"{found_name}"
+    )
+
+    pending[request_id] = {
+        "user_id": update.effective_user.id,
+        "message_id": found_message_id,
+        "name": found_name
+    }
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✅ APPROVE",
+                callback_data=f"approve|{request_id}"
+            ),
+            InlineKeyboardButton(
+                "❌ REJECT",
+                callback_data=f"reject|{request_id}"
+            )
+        ]
+    ]
+
+    await update.message.reply_text(
+        "⏳ Request Admin ki pampincham.\n\n"
+        "✅ Admin approve chesina tarvata "
+        "file meeku send avutundi."
+    )
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                "🔔 NEW FILE REQUEST\n\n"
+                f"👤 User: {update.effective_user.first_name}\n"
+                f"🆔 ID: {update.effective_user.id}\n"
+                f"📁 File: {found_name}"
+            ),
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+
+    except Exception as e:
+
+        print("Admin request error:", e)
+
+
+# =====================================================
+# PENDING REQUESTS
+# =====================================================
+
+pending = {}
+
+
+# =====================================================
+# ADMIN APPROVE / REJECT
+# =====================================================
+
+async def admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+
+    if query.from_user.id != ADMIN_ID:
+
+        await query.answer(
+            "❌ Not allowed",
+            show_alert=True
+        )
+        return
+
+    await query.answer()
+
+    try:
+
+        action, request_id = query.data.split("|", 1)
+
+    except Exception:
+
+        await query.edit_message_text(
+            "❌ Invalid request."
+        )
+        return
+
+    request = pending.pop(request_id, None)
+
+    if not request:
+
+        await query.edit_message_text(
+            "⚠️ Request already processed."
+        )
+        return
+
+    user_id = request["user_id"]
+    message_id = request["message_id"]
+    name = request["name"]
+
+    # =================================================
+    # APPROVE
+    # =================================================
+
+    if action == "approve":
+
+        try:
+
+            sent = await context.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=STORAGE_CHAT_ID,
+                message_id=message_id,
+                protect_content=True
+            )
+
+            context.job_queue.run_once(
+                delete_after_one_hour,
+                3600,
+                data={
+                    "chat_id": user_id,
+                    "message_id": sent.message_id
+                }
+            )
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "✅ REQUEST APPROVED\n\n"
+                    f"📁 {name}\n\n"
+                    "⏳ File 1 hour tarvata "
+                    "auto-delete avutundi."
+                )
+            )
+
+            await query.edit_message_text(
+                "✅ APPROVED\n\n"
+                f"📁 {name}\n"
+                f"👤 User ID: {user_id}\n\n"
+                "📤 File sent."
+            )
+
+        except Exception as e:
+
+            print("Send error:", e)
+
+            await query.edit_message_text(
+                "❌ File send failed.\n\n"
+                "Storage chat/message ID check cheyyandi."
+            )
+
+    # =================================================
+    # REJECT
+    # =================================================
+
+    elif action == "reject":
+
+        try:
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "❌ REQUEST REJECTED\n\n"
+                    f"📁 {name}"
+                )
+            )
+
+        except Exception as e:
+
+            print("Reject message error:", e)
+
+        await query.edit_message_text(
+            "❌ REJECTED\n\n"
+            f"📁 {name}\n"
+            f"👤 User ID: {user_id}"
+        )
+
+
+# =====================================================
+# MAIN
+# =====================================================
+
+def main():
+
+    if not BOT_TOKEN:
+        print("❌ BOT_TOKEN missing")
+        return
+
+    threading.Thread(
+        target=health_server,
+        daemon=True
+    ).start()
+
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .build()
+    )
+
+    app.add_handler(
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            check_join,
+            pattern="^joined$"
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            admin_action,
+            pattern="^(approve|reject)\\|"
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            search_file
+        )
+    )
+
+    print("🔥 HOUSE OF ANIME BOT STARTED")
+
+    app.run_polling()
+
+
+# =====================================================
+# START BOT
+# =====================================================
+
+if __name__ == "__main__":
+    main()# Actual authorized storage message IDs later add cheyyali.
 # =========================================================
 
 FILES = {
