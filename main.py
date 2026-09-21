@@ -1,6 +1,6 @@
 import os
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -13,23 +13,42 @@ from telegram.ext import (
 )
 
 
-# =========================
+# =========================================================
+# RENDER HEALTH CHECK
+# =========================================================
+
+class HealthHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+    def log_message(self, format, *args):
+        pass
+
+
+def run_server():
+    port = int(os.environ.get("PORT", "8080"))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
+
+
+# =========================================================
 # SETTINGS
-# =========================
+# =========================================================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-STORAGE_CHAT_ID = int(os.getenv("STORAGE_CHAT_ID", "0"))
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
+STORAGE_CHAT_ID = int(os.environ.get("STORAGE_CHAT_ID", "0"))
 
-MAIN_CHANNEL = "@House_Of_Anime_Official"
-MAIN_CHANNEL_LINK = "https://t.me/House_Of_Anime_Official"
+MAIN_CHANNEL = "@madara_217"
+MAIN_CHANNEL_LINK = "https://t.me/madara_217"
 
 
-# =========================
-# FILE DATABASE
-# =========================
-# Example only.
-# Replace these later with your own/authorized storage message IDs.
+# =========================================================
+# FILES
+# =========================================================
 
 FILES = {
     "example": 25,
@@ -37,34 +56,38 @@ FILES = {
 }
 
 
-pending = {}
+# =========================================================
+# PENDING REQUESTS
+# =========================================================
+
+pending_requests = {}
 
 
-# =========================
-# RENDER HEALTH CHECK
-# =========================
+# =========================================================
+# DELETE AFTER 1 HOUR
+# =========================================================
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
+async def delete_message(context: ContextTypes.DEFAULT_TYPE):
 
-    def log_message(self, *args):
-        pass
+    data = context.job.data
 
-
-def start_web_server():
-    port = int(os.getenv("PORT", "8080"))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    server.serve_forever()
+    try:
+        await context.bot.delete_message(
+            chat_id=data["chat_id"],
+            message_id=data["message_id"]
+        )
+    except Exception as e:
+        print("Delete error:", e)
 
 
-# =========================
+# =========================================================
 # START
-# =========================
+# =========================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     keyboard = [
         [
@@ -76,45 +99,66 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             InlineKeyboardButton(
                 "✅ I Joined",
-                callback_data="joined"
+                callback_data="check_join"
             )
         ]
     ]
 
     await update.message.reply_text(
         "🎬 Welcome to HOUSE OF ANIME 🫵🏻🌍\n\n"
-        "🔥 First join our Main Channel.\n\n"
-        "After joining, press ✅ I Joined.",
+        "🔥 Search your favourite anime\n"
+        "📥 Request your files\n"
+        "⏳ Admin approval required\n\n"
+        "👇🏻 First join our Main Channel.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-# =========================
+# =========================================================
 # CHECK JOIN
-# =========================
+# =========================================================
 
-async def check_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def check_join(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     query = update.callback_query
     await query.answer()
 
+    user_id = query.from_user.id
+
     try:
+
         member = await context.bot.get_chat_member(
             chat_id=MAIN_CHANNEL,
-            user_id=query.from_user.id
+            user_id=user_id
         )
 
-        if member.status in ("member", "administrator", "creator"):
+        if member.status in (
+            "member",
+            "administrator",
+            "creator"
+        ):
 
             await query.message.reply_text(
                 "✅ Joined successfully!\n\n"
-                "📁 Ippudu kavalsina file name type cheyyandi."
+                "📥 Ippudu meeku kavalsina "
+                "file name type cheyyandi."
             )
 
         else:
 
             await query.message.reply_text(
-                "❌ First Main Channel lo join avvandi."
+                "❌ First Main Channel lo join avvandi.",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(
+                            "🔥 Join Channel 🔥",
+                            url=MAIN_CHANNEL_LINK
+                        )
+                    ]
+                ])
             )
 
     except Exception as e:
@@ -122,233 +166,262 @@ async def check_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("Join check error:", e)
 
         await query.message.reply_text(
-            "⚠️ Join check failed.\n"
-            "Konchem later try cheyyandi."
+            "⚠️ Membership check failed.\n"
+            "Please try again."
         )
 
 
-# =========================
+# =========================================================
 # SEARCH
-# =========================
+# =========================================================
 
-async def search_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def search_file(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    text = update.message.text.strip().lower()
+    if not update.message:
+        return
 
-    found_name = None
-    found_message_id = None
+    user = update.effective_user
+    search = update.message.text.strip().lower()
+
+    matched_name = None
+    matched_message_id = None
 
     for name, message_id in FILES.items():
 
-        if text in name.lower():
-            found_name = name
-            found_message_id = message_id
+        if search in name.lower():
+
+            matched_name = name
+            matched_message_id = message_id
             break
 
     # FILE NOT FOUND
-    if not found_name:
+    if matched_name is None:
 
         await update.message.reply_text(
             "❌ FILE NOT FOUND\n\n"
-            f"📁 Requested: {update.message.text}\n\n"
-            "Your request has been sent to Admin. ⏳"
+            f"📁 {update.message.text}\n\n"
+            "Your request has been sent to Admin."
         )
 
         try:
+
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
                 text=(
-                    "🔔 NEW FILE REQUEST\n\n"
-                    f"👤 User: {update.effective_user.first_name}\n"
-                    f"🆔 User ID: {update.effective_user.id}\n"
+                    "🔔 NEW REQUEST\n\n"
+                    f"👤 User: {user.first_name}\n"
+                    f"🆔 User ID: {user.id}\n"
                     f"📁 Request: {update.message.text}"
                 )
             )
+
         except Exception as e:
+
             print("Admin alert error:", e)
 
         return
 
-    # SAVE REQUEST
-    request_id = f"{update.effective_user.id}:{found_name}"
+    # REQUEST ID
+    request_id = f"{user.id}_{matched_name}"
 
-    pending[request_id] = {
-        "user_id": update.effective_user.id,
-        "file_name": found_name,
-        "message_id": found_message_id
+    pending_requests[request_id] = {
+        "user_id": user.id,
+        "file_name": matched_name,
+        "message_id": matched_message_id
     }
 
+    await update.message.reply_text(
+        "⏳ Request Admin ki pampincham.\n\n"
+        "Admin approve chesina tarvata file "
+        "ikkada send avutundi."
+    )
+
+    # ADMIN BUTTONS
     keyboard = [
         [
             InlineKeyboardButton(
                 "✅ Approve & Send",
-                callback_data=f"approve:{request_id}"
+                callback_data=f"app_{request_id}"
             ),
             InlineKeyboardButton(
                 "❌ Reject",
-                callback_data=f"reject:{request_id}"
+                callback_data=f"rej_{request_id}"
             )
         ]
     ]
 
-    await update.message.reply_text(
-        "⏳ Request Admin ki pampincham.\n"
-        "Approval tarvata file send avutundi."
-    )
+    try:
 
-    await context.bot.send_message(
-        chat_id=ADMIN_ID,
-        text=(
-            "🔔 NEW REQUEST\n\n"
-            f"👤 User: {update.effective_user.first_name}\n"
-            f"🆔 User ID: {update.effective_user.id}\n"
-            f"📁 File: {found_name}"
-        ),
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                "🔔 NEW FILE REQUEST\n\n"
+                f"👤 User: {user.first_name}\n"
+                f"🆔 User ID: {user.id}\n"
+                f"📁 File: {matched_name}"
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    except Exception as e:
+
+        print("Admin request error:", e)
 
 
-# =========================
+# =========================================================
 # ADMIN ACTION
-# =========================
+# =========================================================
 
-async def admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_action(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     query = update.callback_query
-    await query.answer()
 
     if query.from_user.id != ADMIN_ID:
+
         await query.answer(
             "❌ Not authorized.",
             show_alert=True
         )
         return
 
-    action, request_id = query.data.split(":", 1)
+    await query.answer()
 
-    request = pending.pop(request_id, None)
+    try:
 
-    if not request:
+        action, request_id = query.data.split("_", 1)
+
+    except ValueError:
+
+        await query.edit_message_text(
+            "❌ Invalid request."
+        )
+        return
+
+    if request_id not in pending_requests:
+
         await query.edit_message_text(
             "⚠️ Request already processed."
         )
         return
 
+    request = pending_requests.pop(request_id)
+
     user_id = request["user_id"]
     file_name = request["file_name"]
     message_id = request["message_id"]
 
-    # REJECT
-    if action == "reject":
-
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "❌ Request Rejected.\n\n"
-                f"📁 {file_name}"
-            )
-        )
-
-        await query.edit_message_text(
-            f"❌ Rejected\n\n📁 {file_name}"
-        )
-
-        return
-
     # APPROVE
-    try:
+    if action == "app":
 
-        sent = await context.bot.copy_message(
-            chat_id=user_id,
-            from_chat_id=STORAGE_CHAT_ID,
-            message_id=message_id,
-            protect_content=True
-        )
+        try:
 
-        # Delete file after 1 hour
-        context.job_queue.run_once(
-            delete_message,
-            3600,
-            data={
-                "chat_id": user_id,
-                "message_id": sent.message_id
-            }
-        )
-
-        info = await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "✅ Request Approved!\n\n"
-                f"📁 {file_name}\n\n"
-                "⏳ This file will be deleted after 1 hour."
+            sent = await context.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=STORAGE_CHAT_ID,
+                message_id=message_id,
+                protect_content=True
             )
-        )
 
-        # Delete info message after 1 hour
-        context.job_queue.run_once(
-            delete_message,
-            3600,
-            data={
-                "chat_id": user_id,
-                "message_id": info.message_id
-            }
-        )
+            # Delete file after 1 hour
+            context.job_queue.run_once(
+                delete_message,
+                when=3600,
+                data={
+                    "chat_id": user_id,
+                    "message_id": sent.message_id
+                }
+            )
+
+            info = await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "🎉 REQUEST APPROVED!\n\n"
+                    f"📁 {file_name}\n\n"
+                    "⏳ This file will be deleted "
+                    "after 1 hour."
+                )
+            )
+
+            # Delete info message after 1 hour
+            context.job_queue.run_once(
+                delete_message,
+                when=3600,
+                data={
+                    "chat_id": user_id,
+                    "message_id": info.message_id
+                }
+            )
+
+            await query.edit_message_text(
+                "✅ APPROVED\n\n"
+                f"📁 {file_name}\n"
+                f"👤 User ID: {user_id}\n\n"
+                "📤 File sent."
+            )
+
+        except Exception as e:
+
+            print("Send error:", e)
+
+            await query.edit_message_text(
+                "❌ File send failed.\n\n"
+                "Check STORAGE_CHAT_ID and message ID."
+            )
+
+    # REJECT
+    elif action == "rej":
+
+        try:
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "❌ Request Rejected.\n\n"
+                    f"📁 {file_name}"
+                )
+            )
+
+        except Exception as e:
+
+            print("Reject notification error:", e)
 
         await query.edit_message_text(
-            f"✅ Sent successfully\n\n"
+            "❌ REJECTED\n\n"
             f"📁 {file_name}\n"
-            f"🆔 User ID: {user_id}"
-        )
-
-    except Exception as e:
-
-        print("File send error:", e)
-
-        await query.edit_message_text(
-            "❌ File send failed.\n\n"
-            "Check STORAGE_CHAT_ID and message ID."
+            f"👤 User ID: {user_id}"
         )
 
 
-# =========================
-# DELETE
-# =========================
-
-async def delete_message(context: ContextTypes.DEFAULT_TYPE):
-
-    data = context.job.data
-
-    try:
-        await context.bot.delete_message(
-            chat_id=data["chat_id"],
-            message_id=data["message_id"]
-        )
-
-    except Exception as e:
-        print("Delete error:", e)
-
-
-# =========================
+# =========================================================
 # ERROR
-# =========================
+# =========================================================
 
-async def error_handler(update, context):
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    print("ERROR:", context.error)
+    print("BOT ERROR:", context.error)
 
 
-# =========================
+# =========================================================
 # MAIN
-# =========================
+# =========================================================
 
 def main():
 
     if not BOT_TOKEN:
-        print("BOT_TOKEN missing")
+        print("❌ BOT_TOKEN missing")
         return
 
     threading.Thread(
-        target=start_web_server,
+        target=run_server,
         daemon=True
     ).start()
 
@@ -365,14 +438,14 @@ def main():
     app.add_handler(
         CallbackQueryHandler(
             check_join,
-            pattern="^joined$"
+            pattern="^check_join$"
         )
     )
 
     app.add_handler(
         CallbackQueryHandler(
             admin_action,
-            pattern="^(approve|reject):"
+            pattern="^(app|rej)_"
         )
     )
 
@@ -385,14 +458,10 @@ def main():
 
     app.add_error_handler(error_handler)
 
-    print("HOUSE OF ANIME BOT STARTED")
+    print("🔥 HOUSE OF ANIME BOT STARTED!")
 
     app.run_polling()
 
-
-# =========================
-# RUN
-# =========================
 
 if __name__ == "__main__":
     main()
